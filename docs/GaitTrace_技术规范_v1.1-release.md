@@ -5,7 +5,7 @@
 - **日期**：2026-10-03（Released 经所有人 AlphaDrawer 批准）
 - **所有人**：AlphaDrawer（最终批准）
 - **适用对象**：全体人类队员与协作 Agent
-- **上位文档**：`docs/03_GaitTrace需求文档_v2.md`
+- **上位文档**：`docs/GaitTrace_需求文档_v1.1.md`
 - **评审记录**：见 `docs/review/`（v1.0-draft 审查：有条件通过，3 阻塞项已在本版修复）
 - **变更治理**：见第 9 章
 

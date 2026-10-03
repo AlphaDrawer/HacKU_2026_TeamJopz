@@ -88,6 +88,66 @@ git push origin dev-<Name>
 
 这样就完成了 `dev-<Name>` 到 `develop` 的过程。`develop` 到 `main` 也是类似的过程。
 
+## GaitTrace 前端
+
+本專案為 Vite + TypeScript 的行動優先網頁應用，演算法於瀏覽器本機執行，已接入 MediaPipe Pose 真實模型，支援走測、報告、歷史趨勢與離線快取。
+
+- 需求基準：[GaitTrace 需求文件 v1.1](docs/GaitTrace_需求文档_v1.1.md)
+- 技術基準：[GaitTrace 技術規範 v1.1（Released）](docs/GaitTrace_技術規範_v1.1-release.md)
+- 早期前端原型文件已歸檔於 `docs/archive/`，僅供追溯，請勿作為依據。
+
+## 評委快速開始（30 秒跑起來）
+
+環境需求：Node.js 18+（建議 20 LTS）、npm 9+。
+
+```bash
+# 1) 安裝依賴
+npm install
+
+# 2) 本機開發（預設 http://localhost:5173 ）
+npm run dev
+
+# 3) 跑測試（Vitest，含端到端鏈路）
+npm test
+
+# 4) 型別檢查 + 正式建構（產出 dist/）
+npm run build
+npm run preview   # 本機預覽建構產物
+```
+
+### GitHub Pages 子路徑建置
+
+本站部署在 GitHub Pages 子路徑 `/HacKU_2026_TeamJopz/` 下。建構時需帶環境變數
+`GITHUB_PAGES=true`，Vite 的 `base` 才會指向該子路徑（模型與 wasm 路徑也一併對齊）：
+
+```bash
+# Linux / macOS
+GITHUB_PAGES=true npm run build
+
+# Windows PowerShell
+$env:GITHUB_PAGES="true"; npm run build
+```
+
+不帶此變數時，`base` 為根路徑 `/`，適合本機或自有域名部署。
+
+## 第三方開源署名（Third-Party Notices）
+
+本專案使用以下開源資源，謹此致謝；各資源權利歸原作者所有。
+
+| 元件 | 用途 | License | 連結 |
+| --- | --- | --- | --- |
+| MediaPipe / `@mediapipe/tasks-vision` | 端上姿態關鍵點偵測（PoseLandmarker）及其 WASM 執行時資產（`public/wasm`、模型檔 `public/models`） | Apache-2.0 | <https://github.com/google-ai-edge/mediapipe> ／ <https://www.npmjs.com/package/@mediapipe/tasks-vision> |
+| Vite | 前端開發伺服器與建構工具 | MIT | <https://github.com/vitejs/vite> |
+| Vitest | 單元／端到端測試框架 | MIT | <https://github.com/vitest-dev/vitest> |
+| TypeScript | 型別系統與編譯器 | Apache-2.0 | <https://github.com/microsoft/TypeScript> |
+
+說明：
+
+- MediaPipe 的 WASM 資產（`vision_wasm*.js/.wasm`）與 PoseLandmarker 模型
+  `pose_landmarker_lite.task` 均依 Apache-2.0 授權使用，原始來源為 Google MediaPipe；
+  完整授權文字見 Apache-2.0 授權條款。
+- 本專案自身原始碼以 MIT 授權發布（見根目錄 [LICENSE](LICENSE)）。
+
 ## `git` 命令速览
 
 | 操作 | 命令 |

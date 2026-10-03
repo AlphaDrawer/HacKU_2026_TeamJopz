@@ -88,6 +88,12 @@ git push origin dev-<Name>
 
 这样就完成了 `dev-<Name>` 到 `develop` 的过程。`develop` 到 `main` 也是类似的过程。
 
+## GaitTrace 前端（开发中）
+
+目前提供 Vite + TypeScript 的行動優先網頁前端。請參閱 [前端快速開始](docs/GaitTrace-Frontend.md) 了解本機啟動、GitHub Pages 建置、演算法介面及已知限制。
+
+前端原型與完整需求的差距、目前限制及後續驗收項目，請參閱 [前端未完备性说明](docs/GaitTrace-前端未完备性说明.md)。
+
 ## `git` 命令速览
 
 | 操作 | 命令 |

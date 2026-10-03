@@ -3,8 +3,8 @@
  * 与 contracts/constants.ts 区分：这里只放与界面/交互有关的常量。
  */
 
-/** 单次测量时长（秒） */
-export const MEASUREMENT_DURATION_SEC = 30;
+/** 单次测量时长（秒）：兼顾至少3次/侧脚跟着地与体验，12s 足够 */
+export const MEASUREMENT_DURATION_SEC = 12;
 
 /** 开测倒计时（秒） */
 export const COUNTDOWN_SEC = 3;

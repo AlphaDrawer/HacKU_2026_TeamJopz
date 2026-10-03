@@ -76,7 +76,7 @@ export function setupView(ctx: AppContext, navigate: Navigate): HTMLElement {
     h("ol", { className: "guide-list" }, [
       h("li", { text: "找一段平坦、光線充足的平地，鏡頭擺穩。" }),
       h("li", { text: "請側身面向鏡頭，讓全身（尤其雙腳）都入鏡。" }),
-      h("li", { text: "聽到提示後，以平常速度直線行走約 30 秒。" }),
+      h("li", { text: "聽到提示後，以平常速度側身來回走，全程約 12 秒。" }),
     ]),
   );
 

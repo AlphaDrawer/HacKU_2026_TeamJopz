@@ -235,6 +235,7 @@ h1, h2, p { margin-top: 0; }
 .retry-card .retry-msg { color: #56675d; font-size: 15px; line-height: 1.7; margin: 4px 0; }
 .retry-card .retry-tip { color: #8a958d; font-size: 13px; margin: 8px 0 18px; }
 .retry-card .button { min-width: 160px; }
+.retry-card .retry-diag { margin-top: 16px; color: #a8743a; font-size: 12px; word-break: break-all; }
 
 .disclaimer-bar { text-align: center; padding: 14px; color: #839087; font-size: 12px; }
 

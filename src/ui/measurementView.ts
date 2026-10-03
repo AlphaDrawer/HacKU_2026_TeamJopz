@@ -59,11 +59,13 @@ export function measurementView(ctx: AppContext, navigate: Navigate): { el: HTML
   // ---- 失败卡片（默认隐藏）：没测准时替代分数展示 ----
   const failCard = h("div", { className: "retry-card", attrs: { hidden: "" } });
   const retryBtn = h("button", { className: "button primary", text: "重新走一次" });
+  const failDiag = h("p", { className: "retry-diag" });
   failCard.append(
     h("h2", { text: "這次沒測準" }),
     h("p", { className: "retry-msg", text: "可能是畫面不夠清楚、光線不足，或沒有完整拍到全身。" }),
     h("p", { className: "retry-tip", text: "請按準備頁要領，重新走一次。" }),
     retryBtn,
+    failDiag,
   );
   wrap.appendChild(failCard);
 
@@ -111,7 +113,8 @@ export function measurementView(ctx: AppContext, navigate: Navigate): { el: HTML
       onFail: (failure: SessionFailure) => {
         if (destroyed) return;
         // 绝不显示分数：隐藏测量画面，只给大白话 + 重走入口
-        void failure; // 文案对用户统一为「没测准」，reason 留作诊断/日志
+        // 诊断行：暴露失败 reason 与内部提示，便于真机定位是哪道门控
+        failDiag.textContent = `[診斷] ${failure.reason}｜${failure.message}`;
         showRetryCard();
       },
       onError: () => {
@@ -154,6 +157,7 @@ export function measurementView(ctx: AppContext, navigate: Navigate): { el: HTML
     failCard.querySelector(".retry-msg")?.replaceWith(h("p", { className: "retry-msg", text: message }));
     failCard.querySelector(".retry-tip")?.replaceWith(h("p", { className: "retry-tip", text: "請檢查相機權限後返回準備頁重試。" }));
     retryBtn.textContent = "返回準備頁";
+    failDiag.textContent = "";
   }
 
   /** 没测准：隐藏测量画面，显示大白话重走卡片 */

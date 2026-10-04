@@ -137,9 +137,44 @@ export function measurementView(ctx: AppContext, navigate: Navigate): { el: HTML
         },
         onFail: (failure: SessionFailure) => {
           if (destroyed) return;
-          // 绝不显示分数：隐藏测量画面，只给大白话 + 重测入口
-          // 诊断行：暴露失败 reason 与内部提示，便于真机定位是哪道门控
-          failDiag.textContent = `[诊断] ${failure.reason}｜${failure.message}`;
+          // 绝不显示分数：隐藏测量画面，只给大白话 + 重测入口。
+          // 诊断行（v1.3）：除 reason/message 外，把模式/髋摆幅/切段/事件/
+          // 能量统计一并展开，真机一失败即可定位卡点（模式误判 / 入不了段 /
+          // 裁太短 / 事件不足 / 低置信）。只读诊断，不改变任何门控结果。
+          const d = failure.debug;
+          const segDetail = d
+            ? d.segments
+                .map(
+                  (sg, i) =>
+                    `段${i + 1}:${sg.direction} ${sg.startMs}-${sg.endMs}ms/${(
+                      sg.durationMs / 1000
+                    ).toFixed(1)}s`,
+                )
+                .join("；")
+            : "";
+          const diagParts = [
+            `[诊断] ${failure.reason}｜${failure.message}`,
+            d ? `模式=${d.mode}` : "",
+            d
+              ? `髋摆幅=${Math.round(d.hipRangePx)}px(阈值${d.marchHipRangePx})`
+              : "",
+            d
+              ? `段数=${d.segmentCount}${segDetail ? "｜" + segDetail : ""}`
+              : "",
+            d
+              ? `跟着地 左${d.strikesLeft}/右${d.strikesRight}｜关键关节可见度=${(
+                  d.meanJointVisibility * 100
+                ).toFixed(0)}%`
+              : "",
+            d
+              ? `踝能量 中位${Math.round(d.energyMedianPxS)}/峰值${Math.round(
+                  d.energyPeakPxS,
+                )}px·s⁻¹｜入段阈值${Math.round(d.energyEnterPxS)}(旧固定阈值${
+                  d.legacyEnterPxS
+                })`
+              : "",
+          ];
+          failDiag.textContent = diagParts.filter(Boolean).join("｜");
           showRetryCard();
         },
         onError: () => {

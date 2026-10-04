@@ -11,8 +11,12 @@ import {
   STEADY_BAND,
   MAX_INVALID_GAP_MS,
   MARCH_HIP_RANGE_PX,
-  MARCH_VERT_SPEED_ENTER_PX_S,
-  MARCH_VERT_SPEED_EXIT_PX_S,
+  MARCH_ENTER_QUANTILE,
+  MARCH_ENTER_FLOOR_PX_S,
+  MARCH_EXIT_RATIO,
+  RUN_NOISE_BAND_PX_S,
+  RUN_MIN_MS,
+  RUN_MIN_NET_PX,
   MARCH_SMOOTH_WINDOW,
   MARCH_STEADY_BAND,
   VIRTUAL_WIDTH_PX as W,
@@ -20,23 +24,27 @@ import {
 } from './constants'
 
 /**
- * segmentSelector（§4.1；v1.2 增加原地踏步通道）：只保留稳定中段，
- * 剔除起步/转身/止步。
+ * segmentSelector（§4.1；v1.3 鲁棒模式判定 + 自适应踏步入段）：只保留稳定
+ * 中段，剔除起步/转身/止步。
  *
- * 两种模式（按全段髋中心水平摆幅自动判定）：
- *  1) 走行模式（默认）：髋中心 x 速度判态，正=out、负=back、近 0=站定，
- *     滞回阈值防抖；两端按 ±40% 中位速度做稳态裁边。
- *  2) 原地踏步模式（房间空间不足）：髋水平速度≈0，改以【双侧踝垂直节奏】
- *     为据：踝 y 周期性起伏（踏步抬腿）→ 垂直速度活动能量；居中平滑压掉
- *     着地/摆动顶点的瞬时零速，再以滞回阈值切出活动段，按中位能量带裁边，
- *     仍削掉起步/止步的前/后 1 拍。原地无 out/back 方向语义，direction
+ * 两种模式（v1.3 起按【持续同向位移段 run 结构】判定，替代 v1.2 的全段
+ * 髋中心 x 极差单特征）：
+ *  1) 走行模式（locomotion）：髋中心 x 速度判态，正=out、负=back、近 0=
+ *     站定，滞回阈值防抖；两端按 ±40% 中位速度做稳态裁边。
+ *  2) 原地踏步模式（march，房间空间不足）：髋水平速度≈0，改以【双侧踝垂直
+ *     节奏】为据：踝 y 周期性起伏（踏步抬腿）→ 垂直速度活动能量；居中平滑
+ *     压掉着地/摆动顶点的瞬时零速，再以滞回阈值切出活动段，按中位能量带
+ *     裁边，仍削掉起步/止步的前/后弱拍。原地无 out/back 方向语义，direction
  *     复用固定值 'out'（不触碰冻结契约；前端勿把它当走行方向展示）。
+ *
+ * 入段阈值（v1.3）：取整段平滑能量的分位数（自适应取景距离/抬膝高低），
+ * 并设绝对噪声地板防止站姿抖动被相对放大；出段阈值按入段 ×比例滞回。
  *
  * 段内连续无效 ≤250ms 桥接不断段（转身/长时间丢失才切段），桥接帧不参与
  * 速度、能量与裁边。纯函数，输出待填事件/周期的切段。
  */
 
-type Mode = 'locomotion' | 'march'
+export type GaitMode = 'locomotion' | 'march'
 type State = 'idle' | 'out' | 'back' | 'march'
 
 interface Sample {
@@ -50,6 +58,35 @@ interface Sample {
   energy: number // 踏步：平滑后的踝垂直活动能量 px/s
   ok: boolean // 髋可见（走行门控 / 桥接依据）
   bridged: boolean
+}
+
+/** 切段阶段可观测诊断（事件检出前的部分；heelStrike 统计由调用方补齐） */
+export interface SegmentSelectionInfo {
+  mode: GaitMode
+  /** 髋中心 x 全段摆幅（虚拟 px；仅诊断参照） */
+  hipRangePx: number
+  /** v1.2 旧判定阈值（诊断参照，不再参与判定） */
+  marchHipRangePx: number
+  segmentCount: number
+  segments: Array<{
+    startMs: number
+    endMs: number
+    durationMs: number
+    direction: 'out' | 'back'
+  }>
+  energyMedianPxS: number
+  energyPeakPxS: number
+  /** v1.3 自适应入段/出段阈值（px/s） */
+  energyEnterPxS: number
+  energyExitPxS: number
+  /** v1.2 旧固定入段阈值（诊断参照） */
+  legacyEnterPxS: number
+}
+
+export interface SegmentSelectionResult {
+  mode: GaitMode
+  segments: ValidSegment[]
+  info: SegmentSelectionInfo
 }
 
 function rawSamples(frames: PoseFrame[]): Sample[] {
@@ -135,12 +172,75 @@ function median(nums: number[]): number {
   return a[Math.floor(a.length / 2)] ?? 0
 }
 
-/** 模式判定：全段髋中心水平摆幅很小 → 原地踏步（站立/停顿帧不参与） */
-function detectMode(s: Sample[]): Mode {
-  const xs = s.filter((q) => q.ok).map((q) => q.x)
-  if (xs.length < 2) return 'march'
-  const range = Math.max(...xs) - Math.min(...xs)
-  return range <= MARCH_HIP_RANGE_PX ? 'march' : 'locomotion'
+/** 分位数（线性插值；0<=q<=1），空序列返回 0 */
+function quantile(nums: number[], q: number): number {
+  const a = [...nums].sort((x, y) => x - y)
+  if (a.length === 0) return 0
+  if (a.length === 1) return a[0]
+  const pos = (a.length - 1) * q
+  const lo = Math.floor(pos)
+  const hi = Math.ceil(pos)
+  return lo === hi ? a[lo] : a[lo] + (a[hi] - a[lo]) * (pos - lo)
+}
+
+interface Run {
+  durationMs: number
+  netPx: number
+}
+
+/**
+ * 把髋水平速度切成「持续同向位移段」：连续同号且 |v|≥噪声带的速度序列，
+ * 段的物理时长覆盖从首速度帧到末速度所达帧，净位移取段两端髋 x 之差。
+ * 踏步的左右晃/站立噪声切不出长 run；走路（含小范围来回走）每趟都是
+ * 一个又长又远的 run。
+ */
+function computeRuns(s: Sample[]): Run[] {
+  const runs: Run[] = []
+  let a = -1
+  let sign = 0
+  const flush = (b: number) => {
+    if (a < 0) return
+    // 速度帧 a..b，物理端点为样本 a 与样本 b+1
+    const endIdx = b + 1
+    if (endIdx < s.length) {
+      runs.push({
+        durationMs: s[endIdx].t - s[a].t,
+        netPx: Math.abs(s[endIdx].x - s[a].x),
+      })
+    }
+    a = -1
+    sign = 0
+  }
+  for (let i = 0; i < s.length; i++) {
+    const q = s[i]
+    if (!q.ok || !Number.isFinite(q.v) || Math.abs(q.v) < RUN_NOISE_BAND_PX_S) {
+      flush(i - 1)
+      continue
+    }
+    const vsign = q.v > 0 ? 1 : -1
+    if (a < 0) {
+      a = i
+      sign = vsign
+    } else if (vsign !== sign) {
+      flush(i - 1)
+      a = i
+      sign = vsign
+    }
+  }
+  flush(s.length - 2) // 末帧 v=NaN，最后一个速度帧至多是 length-2
+  return runs
+}
+
+/**
+ * 模式判定（v1.3）：存在同时满足持续时长与净位移下限的同向 run → 走行；
+ * 否则原地踏步。比全段极差鲁棒：踏步时身体即使明显左右晃（全段极差很大），
+ * 其往复运动也切不出持续 1.5s 以上、净位移 ≥180px 的单向 run。
+ */
+function detectMode(s: Sample[]): GaitMode {
+  const walkLike = computeRuns(s).some(
+    (r) => r.durationMs >= RUN_MIN_MS && r.netPx >= RUN_MIN_NET_PX,
+  )
+  return walkLike ? 'locomotion' : 'march'
 }
 
 /** 供 analyzeSession 判断本会话是否原地踏步；踏步时强制无物理尺度（speed/stride=null） */
@@ -180,9 +280,26 @@ function trimMarchSteady(samplesInSeg: Sample[]): { start: number; end: number }
   return { start: steady[0].t, end: steady[steady.length - 1].t }
 }
 
-export function selectSegments(frames: PoseFrame[]): ValidSegment[] {
+/**
+ * v1.3 自适应踏步能量阈值：
+ *  入段 = max(噪声地板, 全段能量分位数)；出段 = 入段 ×比例（滞回）。
+ * 分位数随取景距离/抬膝高低自适应；地板排除「纯站姿微小抖动」级噪声
+ * （即便入段，仍有门控2每侧 ≥3 strike 兜底）。
+ */
+function marchEnergyThresholds(s: Sample[]): { enter: number; exit: number } {
+  const energies = s.filter((q) => q.ok).map((q) => q.energy)
+  const enter = Math.max(MARCH_ENTER_FLOOR_PX_S, quantile(energies, MARCH_ENTER_QUANTILE))
+  return { enter, exit: enter * MARCH_EXIT_RATIO }
+}
+
+/**
+ * 切段并返回完整可观测诊断（SegmentSelectionInfo）。
+ * selectSegments 为本函数的轻量包装（仅取 ValidSegment[]）。
+ */
+export function selectSegmentsWithInfo(frames: PoseFrame[]): SegmentSelectionResult {
   const s = buildSamples(frames)
   const mode = detectMode(s)
+  const { enter: enterThreshold, exit: exitThreshold } = marchEnergyThresholds(s)
   const segments: ValidSegment[] = []
   let state: State = 'idle'
   let segStartIdx = -1
@@ -193,8 +310,19 @@ export function selectSegments(frames: PoseFrame[]): ValidSegment[] {
     const inSeg = s.slice(segStartIdx, endIdx + 1).filter((q) => present(q))
     const real = inSeg.filter((q) => q.ok)
     const trimmed = mode === 'march' ? trimMarchSteady(inSeg) : trimSteady(inSeg)
-    const start = trimmed?.start ?? real[0]?.t
-    const end = trimmed?.end ?? real[real.length - 1]?.t
+    let start = trimmed?.start ?? real[0]?.t
+    let end = trimmed?.end ?? real[real.length - 1]?.t
+    // v1.3 安全回退：裁边只应削弱拍，绝不能把段裁到短于 MIN_SEGMENT_MS
+    // （能量波动大时中位数带会把有效段切得过碎）；裁短了就退回真实边界。
+    if (
+      mode === 'march' &&
+      start != null &&
+      end != null &&
+      end - start < MIN_SEGMENT_MS
+    ) {
+      start = real[0]?.t
+      end = real[real.length - 1]?.t
+    }
     if (start != null && end != null && end - start >= MIN_SEGMENT_MS) {
       segments.push({
         startMs: start,
@@ -217,11 +345,11 @@ export function selectSegments(frames: PoseFrame[]): ValidSegment[] {
     if (mode === 'march') {
       // 垂直节奏活动态：能量过 enter 入段，低于 exit 出段（滞回防抖）
       if (state === 'idle') {
-        if (q.ok && q.energy >= MARCH_VERT_SPEED_ENTER_PX_S) {
+        if (q.ok && q.energy >= enterThreshold) {
           state = 'march'
           segStartIdx = i
         }
-      } else if (q.ok && q.energy < MARCH_VERT_SPEED_EXIT_PX_S) {
+      } else if (q.ok && q.energy < exitThreshold) {
         close(i - 1)
       }
       continue
@@ -245,5 +373,31 @@ export function selectSegments(frames: PoseFrame[]): ValidSegment[] {
   }
   if (state !== 'idle') close(s.length - 1)
 
-  return segments.sort((a, b) => a.startMs - b.startMs)
+  segments.sort((a, b) => a.startMs - b.startMs)
+
+  const validSamples = s.filter((q) => q.ok)
+  const xs = validSamples.map((q) => q.x)
+  const energies = validSamples.map((q) => q.energy)
+  const info: SegmentSelectionInfo = {
+    mode,
+    hipRangePx: xs.length ? Math.max(...xs) - Math.min(...xs) : 0,
+    marchHipRangePx: MARCH_HIP_RANGE_PX,
+    segmentCount: segments.length,
+    segments: segments.map((seg) => ({
+      startMs: seg.startMs,
+      endMs: seg.endMs,
+      durationMs: seg.endMs - seg.startMs,
+      direction: seg.direction,
+    })),
+    energyMedianPxS: median(energies.filter((v) => v > 0)),
+    energyPeakPxS: energies.length ? Math.max(...energies) : 0,
+    energyEnterPxS: enterThreshold,
+    energyExitPxS: exitThreshold,
+    legacyEnterPxS: 120,
+  }
+  return { mode, segments, info }
+}
+
+export function selectSegments(frames: PoseFrame[]): ValidSegment[] {
+  return selectSegmentsWithInfo(frames).segments
 }

@@ -16,6 +16,7 @@
 import type {
   ActivityMode,
   AnalyzeFailureReason,
+  SessionDebugInfo,
   GaitCore,
   GaitMetrics,
   PoseFrame,
@@ -30,6 +31,8 @@ import { COUNTDOWN_SEC, LOOP_INTERVAL_MS, MEASUREMENT_DURATION_SEC } from "./con
 export interface SessionFailure {
   reason: AnalyzeFailureReason;
   message: string;
+  /** v1.3 可选只读诊断（来自 analyzeSession 失败分支） */
+  debug?: SessionDebugInfo;
 }
 
 export interface SessionCallbacks {
@@ -171,7 +174,11 @@ export class MeasurementSession {
 
     // 契约 §9：测量失败 → 绝不落库、绝不给分，直接回调 onFail 引导重走
     if (!result.ok) {
-      this.callbacks.onFail?.({ reason: result.reason, message: result.message });
+      this.callbacks.onFail?.({
+        reason: result.reason,
+        message: result.message,
+        debug: result.debug,
+      });
       return;
     }
 

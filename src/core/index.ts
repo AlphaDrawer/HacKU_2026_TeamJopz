@@ -4,10 +4,11 @@ import type {
   PoseFrame,
   ReportRecord,
   ScaleHint,
+  SessionDebugInfo,
   ValidSegment,
 } from '../contracts/types'
 import * as pipeline from './posePipeline'
-import { selectSegments, isMarchSession } from './segmentSelector'
+import { selectSegmentsWithInfo } from './segmentSelector'
 import { detectEventsInSegment } from './eventDetector'
 import { calibrateScale } from './scaleCalibrator'
 import { computeMetrics } from './metricsCalculator'
@@ -15,6 +16,7 @@ import { adviseExercises } from './exerciseAdvisor'
 import { buildConclusion } from './ruleEngine'
 import {
   ANKLE_INDICES,
+  CRITICAL_JOINTS,
   MIN_SESSION_FRAMES,
   MIN_HEEL_STRIKES_PER_SIDE,
   SESSION_MIN_CONFIDENCE,
@@ -58,15 +60,15 @@ export function createGaitCore(): GaitCore {
         }
       }
 
+      // 1) 切段：只保留稳定中段（v1.3 返回模式/能量等可观测诊断）
+      const selection = selectSegmentsWithInfo(frames)
       // 原地踏步无平移物理意义：判定为 march 后忽略任何尺度线索，
-      // 强制 speed/stride 为 null（防止误传 height 导致 speed≈0 的假阳性就医预警）
-      const marchSession = isMarchSession(frames)
+      // 强制 speed/stride 为 null（让 speed≈0 的假阳性就医预警）
+      const marchSession = selection.mode === 'march'
       const effectiveScaleHint = marchSession ? undefined : scaleHint
 
-      // 1) 切段：只保留侧面横走的中段匀速段
-      const rawSegments: ValidSegment[] = selectSegments(frames)
       // 2) 每段检测左右 heelStrike（写入事件副本）
-      const segments: ValidSegment[] = rawSegments.map((seg) => ({
+      const segments: ValidSegment[] = selection.segments.map((seg) => ({
         ...seg,
         events: detectEventsInSegment(frames, seg),
       }))
@@ -77,6 +79,45 @@ export function createGaitCore(): GaitCore {
       // heelStrike；任一侧击数不足 → 主指标算不出，禁止拼「整体平稳」。
       const countBySide = { left: 0, right: 0 }
       for (const e of allEvents) countBySide[e.side] += 1
+
+      /**
+       * 只读诊断（v1.3）：把切段阶段的模式/摆幅/段信息/能量统计与事件
+       * 计数、关键关节平均可见度汇总成 SessionDebugInfo。仅随失败返回，
+       * 不参与任何门控判定，绝不在真机上自动放行。
+       */
+      const buildDebug = (): SessionDebugInfo => {
+        const [inStart, inEnd] = segments.length
+          ? [
+              Math.min(...segments.map((sg) => sg.startMs)),
+              Math.max(...segments.map((sg) => sg.endMs)),
+            ]
+          : [null, null]
+        const scoped = frames.filter(
+          (f) => inStart == null || (f.timestampMs >= inStart && f.timestampMs <= inEnd),
+        )
+        let visSum = 0
+        let visN = 0
+        for (const f of scoped) {
+          for (const idx of CRITICAL_JOINTS) {
+            visSum += f.landmarks[idx].visibility
+            visN++
+          }
+        }
+        return {
+          mode: selection.info.mode,
+          hipRangePx: selection.info.hipRangePx,
+          marchHipRangePx: selection.info.marchHipRangePx,
+          segmentCount: selection.info.segmentCount,
+          segments: selection.info.segments,
+          strikesLeft: countBySide.left,
+          strikesRight: countBySide.right,
+          meanJointVisibility: visN > 0 ? visSum / visN : 0,
+          energyMedianPxS: selection.info.energyMedianPxS,
+          energyPeakPxS: selection.info.energyPeakPxS,
+          energyEnterPxS: selection.info.energyEnterPxS,
+          legacyEnterPxS: selection.info.legacyEnterPxS,
+        }
+      }
       if (
         countBySide.left < MIN_HEEL_STRIKES_PER_SIDE ||
         countBySide.right < MIN_HEEL_STRIKES_PER_SIDE
@@ -85,6 +126,7 @@ export function createGaitCore(): GaitCore {
           ok: false as const,
           reason: 'insufficient-main-metrics',
           message: '本次没有检测到有效步态，请把手机放在斜侧30–45°位置，让双脚左右错开，稳定踏步或在小范围内来回走后重试。',
+          debug: buildDebug(),
         }
       }
 
@@ -96,6 +138,7 @@ export function createGaitCore(): GaitCore {
           ok: false as const,
           reason: 'low-confidence',
           message: '本次画面骨架不够清晰，请确保光线充足、全身入镜后重走。',
+          debug: buildDebug(),
         }
       }
 
@@ -120,6 +163,7 @@ export function createGaitCore(): GaitCore {
           ok: false as const,
           reason: 'insufficient-main-metrics',
           message: '本次未测到有效步态，请重新测量。',
+          debug: buildDebug(),
         }
       }
 

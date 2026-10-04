@@ -162,6 +162,38 @@ export type AnalyzeFailureReason =
   | "insufficient-main-metrics"
   | "low-confidence";
 
+/**
+ * 失败时的只读内部诊断（v1.3 新增可选字段；不改写任何门控决策，
+ * 也不会在真机上自动放行）。仅在 ok:false 时可能出现，供 UI 诊断行
+ * 展示，下次真机失败即可定位是「模式误判 / 入不了段 / 裁太短 /
+ * 事件不足 / 低置信」哪一环。
+ */
+export interface SessionDebugInfo {
+  /** 切段阶段判定的模式：march=原地踏步，locomotion=走行 */
+  mode: "march" | "locomotion";
+  /** 髋中心 x 全段摆幅（虚拟 px）与 v1.2 旧判定阈值 */
+  hipRangePx: number;
+  marchHipRangePx: number;
+  /** 切出的段数与每段起止/时长/方向 */
+  segmentCount: number;
+  segments: Array<{
+    startMs: number;
+    endMs: number;
+    durationMs: number;
+    direction: "out" | "back";
+  }>;
+  /** 合并所有段后每侧 heelStrike 数（段数为 0 时均为 0） */
+  strikesLeft: number;
+  strikesRight: number;
+  /** 段内关键关节（双髋/双踝）平均可见度 0..1（无段时为全会话均值） */
+  meanJointVisibility: number;
+  /** 平滑踝垂直能量的中位数/峰值（px/s）与自适应入段阈值、v1.2 旧阈值 */
+  energyMedianPxS: number;
+  energyPeakPxS: number;
+  energyEnterPxS: number;
+  legacyEnterPxS: number;
+}
+
 export type AnalyzeResult =
   | {
       ok: true;
@@ -170,7 +202,13 @@ export type AnalyzeResult =
       /** 运动类型（v1.2 MUST）：march=原地踏步，walk=直线行走 */
       activityMode: ActivityMode;
     }
-  | { ok: false; reason: AnalyzeFailureReason; message: string };
+  | {
+      ok: false;
+      reason: AnalyzeFailureReason;
+      message: string;
+      /** v1.3 可选只读诊断（见 SessionDebugInfo） */
+      debug?: SessionDebugInfo;
+    };
 
 export interface GaitCore {
   initPose(modelAssetUrl: string): Promise<void>;

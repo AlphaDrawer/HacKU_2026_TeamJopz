@@ -46,16 +46,41 @@ export const MIN_SEGMENT_MS = 800;
 export const STEADY_BAND = 0.4;
 export const MAX_INVALID_GAP_MS = 250;
 
-// ---- 原地踏步模式（空间不足：无走行位移，靠垂直节奏识别；真机修正 v1.2）----
-// 全段髋中心水平摆幅 ≤ 此值（虚拟 px）→ 判定为原地踏步，改走垂直节奏通道
+// ---- 原地踏步模式（空间不足：无走行位移，靠垂直节奏识别；真机修正 v1.3）----
+// v1.2 曾用「全段髋中心 x 极差 ≤120px」单特征判 march，实测人离镜头较近、
+// 踏步时身体左右稍晃，极差就轻易超 12% 画面宽 → 误判 locomotion → 踏步小幅
+// 水平速度达不到走行入段阈值 → 无段 → 门控2。v1.3 改为基于「持续同向
+// 位移段(run)」判别（见 segmentSelector.detectMode）。
+// 旧常量仅留作诊断参照与兼容，不再参与判定/切段。
 export const MARCH_HIP_RANGE_PX = 120;
-// 踝垂直速度（|dy/dt|，双侧取大后再平滑）进入/退出活动态：滞回防抖
+
+// ---- 模式判定（v1.3：run 结构判别，替代全段极差）----
+// 把髋水平速度按符号切成「同向位移段(run)」（|v| 低于噪声带时断开）。
+// 走路（含小范围来回走）存在又长又远的 run；踏步/站立的 run 都短。
+// 任一 run 同时达到时长与净位移下限 → 判 locomotion，否则 march。
+export const RUN_NOISE_BAND_PX_S = 30; // |髋水平速度| 低于此值视为无方向、run 断开
+export const RUN_MIN_MS = 1500; // run 最短持续时长（踏步左右晃半周期通常 <1.5s）
+export const RUN_MIN_NET_PX = 180; // run 内最少净位移（虚拟px，即画面宽 18%）
+
+// ---- 踏步入段（v1.3：能量分位数自适应取景，替代固定 120 阈值）----
+// 固定绝对阈值对取景距离/抬膝高低不自适应（远机位/抬膝低时踝垂直速度
+// 峰值到不了 120px/s 就永远不进段）。改为取整段平滑能量的高比例分位数
+// 作为入段基准（节奏越清晰，高能量帧与噪声帧差距越大，分位数本身自适应）；
+// 另设绝对噪声地板，防止纯站姿噪声/检测抖动被分位数相对放大而误触发。
+// 安全兜底：即便小幅站姿晃动入段，也会因每侧 heelStrike<3 被门控2拒绝。
+export const MARCH_ENTER_QUANTILE = 0.6; // 入段阈值 = 能量序列此分位数
+export const MARCH_ENTER_FLOOR_PX_S = 40; // 入段绝对噪声地板（px/s）
+export const MARCH_EXIT_RATIO = 0.5; // 出段阈值 = 入段阈值 ×此比例（滞回防抖）
+// 旧固定阈值仅留作诊断参照，不再参与切段。
 export const MARCH_VERT_SPEED_ENTER_PX_S = 120;
 export const MARCH_VERT_SPEED_EXIT_PX_S = 60;
 // 垂直活动能量的居中平滑窗口（帧）；压掉着地/摆动顶点处的瞬时 vy=0
 export const MARCH_SMOOTH_WINDOW = 5;
-// 踏步稳态裁边：平滑能量 ≥ 中位值 ×(1-此带) 才算稳定中段（削起步/止步）
-export const MARCH_STEADY_BAND = 0.4;
+
+// ---- 踏步稳态裁边（v1.3）----
+// 平滑能量 ≥ 中位值 ×(1-此带) 视为稳定中段；裁后若短于 MIN_SEGMENT_MS
+// 则回退到段内真实帧边界（裁边只用于削起步/止步弱拍，绝不允许把段裁没）。
+export const MARCH_STEADY_BAND = 0.5;
 
 // ---- 指标 ----
 export const MAX_STEP_GAP_MS = 2000;

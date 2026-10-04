@@ -6,7 +6,7 @@
  *   - 请求相机；失败显示可理解的错误文案
  *   - 启动 MeasurementSession，用其回调更新倒计时、进度、骨架
  *   - analyzeSession 回 ok:false 或主指标缺失时：不显示任何分数，
- *     改弹大白话「這次沒測準，請重新走一次」+ 重走入口（原地重开）
+ *     改弹大白话「這次冇測準，請再踏步一次」+ 重踏入口（原地重开）
  *   - 离开页面时停相机、取消会话（生命周期清理）
  *
  * 返回对象带 destroy()，由 router 在切路由时统一清理，杜绝旧版
@@ -58,12 +58,12 @@ export function measurementView(ctx: AppContext, navigate: Navigate): { el: HTML
 
   // ---- 失败卡片（默认隐藏）：没测准时替代分数展示 ----
   const failCard = h("div", { className: "retry-card", attrs: { hidden: "" } });
-  const retryBtn = h("button", { className: "button primary", text: "重新走一次" });
+  const retryBtn = h("button", { className: "button primary", text: "再踏步一次" });
   const failDiag = h("p", { className: "retry-diag" });
   failCard.append(
-    h("h2", { text: "這次沒測準" }),
-    h("p", { className: "retry-msg", text: "可能是畫面不夠清楚、光線不足，或沒有完整拍到全身。" }),
-    h("p", { className: "retry-tip", text: "請按準備頁要領，重新走一次。" }),
+    h("h2", { text: "呢次冇測準" }),
+    h("p", { className: "retry-msg", text: "可能係畫面唔夠清楚、光線不足、冇完整拍到全身，或者原地踏步唔夠穩定。" }),
+    h("p", { className: "retry-tip", text: "請跟返準備頁嘅要領，擺好斜角，再踏步一次。" }),
     retryBtn,
     failDiag,
   );
@@ -87,14 +87,14 @@ export function measurementView(ctx: AppContext, navigate: Navigate): { el: HTML
     requestAnimationFrame(renderLoop);
   };
 
-  /** 全新开始一次会话（首次与「重新走一次」共用） */
+  /** 全新开始一次会话（首次与「再踏步一次」共用） */
   function startSession(): void {
     latestFrame = null;
     progressFill.style.width = "0%";
 
     session = new MeasurementSession(ctx.core, ctx.store, video, MODEL_URL, {
       onCountdown: (remain) => {
-        status.textContent = remain > 0 ? `準備…${remain}` : "開始行走";
+        status.textContent = remain > 0 ? `準備…${remain}` : "開始踏步";
       },
       onTick: (elapsedSec, totalSec) => {
         status.textContent = `測量中 ${elapsedSec}/${totalSec} 秒`;
@@ -135,7 +135,7 @@ export function measurementView(ctx: AppContext, navigate: Navigate): { el: HTML
       video.srcObject = stream;
       await video.play().catch(() => undefined);
       camera.onEnded = () => {
-        if (!destroyed) showRetryCard("相機已中斷，請重新走一次。");
+        if (!destroyed) showRetryCard("相機已中斷，請再踏步一次。");
       };
     } catch (error) {
       // 相机不可用就无法真实测量：如实提示并给返回入口，不再假装模拟
@@ -166,7 +166,7 @@ export function measurementView(ctx: AppContext, navigate: Navigate): { el: HTML
     progressBar.hidden = true;
     status.textContent = "";
     failCard.hidden = false;
-    retryBtn.textContent = "重新走一次";
+    retryBtn.textContent = "再踏步一次";
     if (headingMsg) {
       failCard.querySelector(".retry-msg")?.replaceWith(h("p", { className: "retry-msg", text: headingMsg }));
     }

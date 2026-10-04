@@ -54,7 +54,7 @@ export function createGaitCore(): GaitCore {
         return {
           ok: false as const,
           reason: 'insufficient-frames',
-          message: '今次走測時間太短，請在鏡頭前完整走過一段後再停止。',
+          message: '今次測量時間太短，請跟足全程（踏步或行走）後再停止。',
         }
       }
 
@@ -79,7 +79,7 @@ export function createGaitCore(): GaitCore {
         return {
           ok: false as const,
           reason: 'insufficient-main-metrics',
-          message: '今次未測到有效步態，請側身對正鏡頭、穩定來回走幾步後重試。',
+          message: '今次未測到有效步態，請將手機擺喺斜側30–45°、令雙腳左右錯開，原地穩定踏步後重試。',
         }
       }
 

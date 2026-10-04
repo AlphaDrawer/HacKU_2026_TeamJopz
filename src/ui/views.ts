@@ -4,7 +4,7 @@
  * 每个视图都是一个 render 函数：输入依赖容器 + 导航器，输出一个可挂载
  * 的 HTMLElement，并在内部绑定本页事件。视图：
  *   - homeView    ：产品说明 + 开始入口 + 隐私要点
- *   - setupView   ：拍摄指引（侧身/光线/平地）+ 语音开关 + 进入测量
+ *   - setupView   ：拍摄指引（斜角 30–45°/光线/平地原地踏步）+ 语音开关 + 进入测量
  *   - reportView  ：展示最近一次报告（指标卡 + 严重预警 + 免责）
  *   - historyView ：历史列表 + 趋势图 + 删除
  * 测量页因为含相机+实时骨架+计时，单独放在 measurementView.ts。
@@ -48,7 +48,7 @@ export function homeView(_ctx: AppContext, navigate: Navigate): HTMLElement {
   hero.append(
     h("h1", { text: "用手機鏡頭，記錄你的步態" }),
     h("p", {
-      text: "GaitTrace 在本機以側身影像估算左右對稱與步間穩定，協助你長期自我追蹤。影片不離開裝置。",
+      text: "GaitTrace 喺手機本機以斜角影像、靠原地踏步估算左右對稱同步間穩定，幫你長期自我追蹤。影片唔會離開裝置。",
     }),
   );
   const cta = h("button", { className: "button primary", text: "開始準備" });
@@ -74,9 +74,9 @@ export function setupView(ctx: AppContext, navigate: Navigate): HTMLElement {
   card.append(
     h("h1", { text: "拍攝前準備" }),
     h("ol", { className: "guide-list" }, [
-      h("li", { text: "找一段平坦、光線充足的平地，鏡頭擺穩。" }),
-      h("li", { text: "請側身面向鏡頭，讓全身（尤其雙腳）都入鏡。" }),
-      h("li", { text: "聽到提示後，以平常速度側身來回走，全程約 12 秒。" }),
+      h("li", { text: "搵個平坦、光線充足、大約一塊墊咁大嘅位置，將手機擺穩。" }),
+      h("li", { text: "手機擺喺斜側大約 30–45°（唔好正對身體嘅正側面），令雙腳喺畫面入面左右錯開，全身、尤其雙腳都要入鏡。" }),
+      h("li", { text: "聽到提示之後原地抬膝踏步，節奏保持穩定，全程大約 12 秒。" }),
     ]),
   );
 

@@ -46,6 +46,17 @@ export const MIN_SEGMENT_MS = 800;
 export const STEADY_BAND = 0.4;
 export const MAX_INVALID_GAP_MS = 250;
 
+// ---- 原地踏步模式（空间不足：无走行位移，靠垂直节奏识别；真机修正 v1.2）----
+// 全段髋中心水平摆幅 ≤ 此值（虚拟 px）→ 判定为原地踏步，改走垂直节奏通道
+export const MARCH_HIP_RANGE_PX = 120;
+// 踝垂直速度（|dy/dt|，双侧取大后再平滑）进入/退出活动态：滞回防抖
+export const MARCH_VERT_SPEED_ENTER_PX_S = 120;
+export const MARCH_VERT_SPEED_EXIT_PX_S = 60;
+// 垂直活动能量的居中平滑窗口（帧）；压掉着地/摆动顶点处的瞬时 vy=0
+export const MARCH_SMOOTH_WINDOW = 5;
+// 踏步稳态裁边：平滑能量 ≥ 中位值 ×(1-此带) 才算稳定中段（削起步/止步）
+export const MARCH_STEADY_BAND = 0.4;
+
 // ---- 指标 ----
 export const MAX_STEP_GAP_MS = 2000;
 export const ANKLE_SEPARABLE_RATIO = 0.2; // 踝水平距 / 小腿长

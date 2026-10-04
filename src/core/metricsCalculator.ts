@@ -293,7 +293,7 @@ export function computeMetrics(
     level: calibrated ? levelSpeed(sp) : 'none',
     calibrated,
     confidence: scale.confidence ?? 0,
-    hint: calibrated ? '中段直線勻速段的平均速度。' : '未完成尺度校準，無法給出物理速度。',
+    hint: calibrated ? '有效測量段嘅平均速度。' : '未完成尺度校準，無法給出物理速度。',
   }
   const strideLength: Metric = {
     key: 'strideLength',

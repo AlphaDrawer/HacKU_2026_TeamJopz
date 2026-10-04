@@ -252,3 +252,156 @@ describe('exerciseAdvisor', () => {
     expect(ex.length).toBeGreaterThan(0)
   })
 })
+
+// ===========================================================================
+// 原地踏步（斜角 30–45°）合成数据：空间不足时原地踏步的走测兜底
+// ===========================================================================
+describe('原地踏步合成数据（垂直节奏通道）', () => {
+  const FPS = 20
+  const FRAME_MS = 1000 / FPS
+  const HIP_X = 0.5 // 全程髋中心不动
+  const HIP_Y = 0.55
+  const GROUND_Y = 0.82
+  const SWING_RAISE = 0.05
+  const ANKLE_X_L = 0.46 // 斜角：左右踝 x 可分（非纯侧面重合）
+  const ANKLE_X_R = 0.54
+  const CONTACT_HALF_MS = 25
+
+  /**
+   * 交替调度的踏步合成帧。
+   * @param halfToR L击→下一 R击 的间隔(ms)；halfToL R击→下一 L击
+   * 等间隔=对称踏步；不等=左右不对称。所有间隔取帧格 50ms 整数倍。
+   */
+  function marchFrames(
+    durationMs: number,
+    halfToR: number,
+    halfToL: number,
+    opts: { rightFrozen?: boolean; allFrozen?: boolean } = {}
+  ): PoseFrame[] {
+    // 交替 strike 时刻
+    type SI = { side: 'left' | 'right'; t: number }
+    const strikes: SI[] = []
+    let t = 0
+    let expectR = true
+    while (t <= durationMs) {
+      strikes.push({ side: expectR ? 'right' : 'left', t })
+      t += expectR ? halfToR : halfToL
+      expectR = !expectR
+    }
+    const timesFor = (side: 'left' | 'right') =>
+      strikes.filter((s) => s.side === side).map((s) => s.t)
+
+    /** 单侧踝 y：strike 帧±25ms 落地（局部最大），两击间正弦抬腿 */
+    const ankleY = (ms: number, ts: number[]): number => {
+      if (ts.length === 0) return GROUND_Y
+      if (ms <= ts[0]) return Math.abs(ms - ts[0]) <= CONTACT_HALF_MS ? GROUND_Y : GROUND_Y - SWING_RAISE
+      let i = 0
+      while (i < ts.length - 1 && ms >= ts[i + 1]) i++
+      const a = ts[i]
+      const b = ts[i + 1]
+      if (b == null) return GROUND_Y
+      if (Math.abs(ms - a) <= CONTACT_HALF_MS || Math.abs(ms - b) <= CONTACT_HALF_MS) {
+        return GROUND_Y
+      }
+      const p = (ms - a) / (b - a)
+      return GROUND_Y - SWING_RAISE * Math.sin(p * Math.PI)
+    }
+
+    const n = Math.round(durationMs / FRAME_MS)
+    return Array.from({ length: n + 1 }, (_, k) => {
+      const ms = k * FRAME_MS
+      const lms = Array.from({ length: 33 }, () => ({
+        x: HIP_X,
+        y: HIP_Y,
+        z: 0,
+        visibility: 0.001,
+      }))
+      const set = (idx: number, x: number, y: number, v: number) =>
+        Object.assign(lms[idx], { x, y, visibility: v })
+      if (!opts.allFrozen) {
+        set(23, HIP_X - 0.012, HIP_Y, 0.97)
+        set(24, HIP_X + 0.012, HIP_Y, 0.97)
+        set(25, HIP_X - 0.016, 0.68, 0.95)
+        set(26, HIP_X + 0.016, 0.68, 0.9)
+        set(11, HIP_X - 0.012, 0.4, 0.97)
+        set(12, HIP_X + 0.012, 0.4, 0.95)
+        set(0, HIP_X, 0.34, 0.96)
+        const yL = ankleY(ms, timesFor('left'))
+        const yR = opts.rightFrozen ? GROUND_Y : ankleY(ms, timesFor('right'))
+        set(27, ANKLE_X_L, yL, 0.96)
+        set(28, ANKLE_X_R, yR, 0.92)
+      } else {
+        // 完全站定：全部关节固定、无节奏
+        set(23, HIP_X - 0.012, HIP_Y, 0.97)
+        set(24, HIP_X + 0.012, HIP_Y, 0.97)
+        set(25, HIP_X - 0.016, 0.68, 0.95)
+        set(26, HIP_X + 0.016, 0.68, 0.9)
+        set(27, ANKLE_X_L, GROUND_Y, 0.96)
+        set(28, ANKLE_X_R, GROUND_Y, 0.92)
+        set(11, HIP_X - 0.012, 0.4, 0.97)
+        set(12, HIP_X + 0.012, 0.4, 0.95)
+        set(0, HIP_X, 0.34, 0.96)
+      }
+      return { frameId: k, timestampMs: Math.round(ms), landmarks: lms, inferMs: 10 }
+    })
+  }
+
+  it('正常踏步：ok:true、symmetry 高、stability 有效，切段覆盖大部分时长', async () => {
+    const frames = marchFrames(6000, 250, 250)
+    const segs = selectSegments(frames)
+    expect(segs.length).toBeGreaterThan(0)
+    // 原地踏步段复用 direction='out'（固定值，无走行方向语义）
+    expect(segs[0].direction).toBe('out')
+    const covered = segs.reduce((ms, s) => ms + (s.endMs - s.startMs), 0)
+    expect(covered).toBeGreaterThanOrEqual(0.8 * 6000)
+
+    const core = createGaitCore()
+    const result = await core.analyzeSession('march-normal', frames, [])
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('expected ok')
+    const { metrics } = result
+    expect(metrics.metrics.symmetry.value).not.toBeNull()
+    expect(metrics.metrics.symmetry.value!).toBeGreaterThan(90)
+    expect(metrics.metrics.stability.value).not.toBeNull()
+    expect(metrics.metrics.stability.value!).toBeLessThanOrEqual(8)
+    // 未校准时物理指标仍必须为 null
+    expect(metrics.metrics.speed.value).toBeNull()
+    expect(metrics.metrics.strideLength.value).toBeNull()
+  })
+
+  it('左右不对称踏步：ok:true 且 symmetry 明显更低', async () => {
+    const frames = marchFrames(6000, 150, 350) // 150/350 → asym 40% → symmetry≈60
+    const core = createGaitCore()
+    const a = await core.analyzeSession('march-asym', frames, [])
+    const n = await core.analyzeSession('march-n', marchFrames(6000, 250, 250), [])
+    expect(a.ok).toBe(true)
+    expect(n.ok).toBe(true)
+    if (!a.ok || !n.ok) throw new Error('expected ok')
+    expect(a.metrics.metrics.symmetry.value!).toBeLessThan(70)
+    expect(n.metrics.metrics.symmetry.value! - a.metrics.metrics.symmetry.value!).toBeGreaterThan(20)
+  })
+
+  it('踏步帧数不足 → ok:false, reason=insufficient-frames', async () => {
+    const core = createGaitCore()
+    const result = await core.analyzeSession('march-short', marchFrames(1000, 250, 250).slice(0, 20), [])
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected failure')
+    expect(result.reason).toBe('insufficient-frames')
+  })
+
+  it('原地站定无节奏 → ok:false, reason=insufficient-main-metrics', async () => {
+    const core = createGaitCore()
+    const result = await core.analyzeSession('march-frozen', marchFrames(4000, 250, 250, { allFrozen: true }), [])
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected failure')
+    expect(result.reason).toBe('insufficient-main-metrics')
+  })
+
+  it('单侧踏步（另一侧无垂直节奏）→ ok:false, reason=insufficient-main-metrics', async () => {
+    const core = createGaitCore()
+    const result = await core.analyzeSession('march-one-side', marchFrames(4000, 250, 250, { rightFrozen: true }), [])
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected failure')
+    expect(result.reason).toBe('insufficient-main-metrics')
+  })
+})

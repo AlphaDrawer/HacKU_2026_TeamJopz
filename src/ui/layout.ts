@@ -11,9 +11,9 @@ export interface Layout {
 
 /** 顶部导航项（繁体文案） */
 const NAV_ITEMS: Array<{ route: string; label: string }> = [
-  { route: ROUTES.HOME, label: "首頁" },
-  { route: ROUTES.SETUP, label: "準備" },
-  { route: ROUTES.HISTORY, label: "歷史" },
+  { route: ROUTES.HOME, label: "首页" },
+  { route: ROUTES.SETUP, label: "准备" },
+  { route: ROUTES.HISTORY, label: "历史" },
 ];
 
 export function mountLayout(root: HTMLElement): Layout {
@@ -26,7 +26,7 @@ export function mountLayout(root: HTMLElement): Layout {
   brand.className = "brand";
   brand.href = `${ROUTE_PREFIX}${ROUTES.HOME}`;
   brand.innerHTML =
-    '<span class="brand-mark">步</span><span>GaitTrace<small>私隱優先・步態日記</small></span>';
+    '<span class="brand-mark">步</span><span>GaitTrace<small>隐私优先・步态日记</small></span>';
 
   const nav = document.createElement("nav");
   NAV_ITEMS.forEach((item) => {
@@ -46,7 +46,7 @@ export function mountLayout(root: HTMLElement): Layout {
 
   const disclaimerBar = document.createElement("div");
   disclaimerBar.className = "disclaimer-bar";
-  disclaimerBar.textContent = "篩查與自我追蹤，不構成醫學診斷";
+  disclaimerBar.textContent = "用于筛查与自我追踪，不构成医学诊断";
 
   root.append(header, content, disclaimerBar);
 

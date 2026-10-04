@@ -13,12 +13,14 @@ import {
   VISIBILITY_THRESHOLD,
   DEFAULT_SHANK_RATIO,
   MAX_STEP_GAP_MS,
+  MIN_ALTERNATING_STEP_GAP_MS,
   ANKLE_SEPARABLE_RATIO,
   SEPARABLE_PASS_RATIO,
   SYM_GREEN,
   SYM_YELLOW,
   CV_GREEN,
   CV_YELLOW,
+  CV_SCORE_SCALE,
   SPEED_GREEN_MIN,
   SPEED_GREEN_MAX,
   SPEED_YELLOW_MIN,
@@ -34,8 +36,10 @@ import {
  *
  *  - symmetry：时间域交替对称度 0–100（越大越好）。asym%=|meanL-meanR|/
  *    (meanL+meanR)*100，symmetry=100-asym%。
- *  - stability：左右交替步间隔 CV% 的平均（越小越好）；契约 Metric 不带
- *    方向，hint 中注明「CV% 越小越稳定」。
+ *  - stability：左右交替步间隔的稳健变异系数 rCV%（MAD 估计）平均后换算
+ *    成 0–100 稳定度得分（越大越好）；level 仍按内部 rCV% 判定，
+ *    hint 注明「数值越大表示步频越稳定」。18s 样本下 MAD 不会被单个
+ *    误检/错误着地高度拉偏（旧标准差 CV 会在 ~10%–80% 间剧烈跳变）。
  *  - speed：中段髋中心物理速度（m/s），仅在尺度校准时可信。
  *  - strideLength：同侧相邻重击间髋位移的物理步幅（m）。
  * 另输出内部诊断 GaitDiagnostics（左右踝可分性），不改契约。纯函数。
@@ -51,6 +55,30 @@ export interface GaitDiagnostics {
 }
 
 const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length
+
+/** 中位数（偶数个时取中间两值的算术平均，即标准中位数） */
+export function median(a: number[]): number {
+  const s = [...a].sort((x, y) => x - y)
+  const n = s.length
+  if (n === 0) return NaN
+  const mid = Math.floor(n / 2)
+  return n % 2 === 1 ? s[mid] : (s[mid - 1] + s[mid]) / 2
+}
+
+/**
+ * 稳健变异系数 rCV%（基于 MAD）：
+ *   med = median(a)，MAD = median(|v - med|)，
+ *   rSD = 1.4826 * MAD，rCV% = rSD / med * 100。
+ * 样本少于 2 个、或中位数 ≤ 0（无有效间隔）时返回 null。
+ */
+export function robustCvPercent(a: number[]): number | null {
+  if (a.length < 2) return null
+  const med = median(a)
+  if (!(med > 0)) return null
+  const mad = median(a.map((v) => Math.abs(v - med)))
+  const rsd = 1.4826 * mad
+  return (rsd / med) * 100
+}
 
 export function buildCycles(segments: ValidSegment[]): GaitCycle[] {
   const cycles: GaitCycle[] = []
@@ -82,7 +110,8 @@ export function countStrikes(segments: ValidSegment[]): { left: number; right: n
 
 interface TimingResult {
   symmetry: number | null
-  cv: number | null
+  /** 左右两侧稳健变异系数 rCV% 的平均（越小越好） */
+  rcv: number | null
   meanStepMs: number | null
   intervalsL: number[]
   intervalsR: number[]
@@ -103,15 +132,17 @@ function timing(segments: ValidSegment[]): TimingResult {
       if (strikes[i].side === strikes[i - 1].side) continue // 仅异侧相邻才算交替步
       const gap = strikes[i].timestampMs - strikes[i - 1].timestampMs
       if (gap <= 0 || gap > MAX_STEP_GAP_MS) continue
+      // 下界保护：小于 200ms 的交替间隔生理上不可能，按误检剔除
+      if (gap < MIN_ALTERNATING_STEP_GAP_MS) continue
       if (strikes[i].side === 'left') intervalsL.push(gap)
       else intervalsR.push(gap)
     }
   }
   if (totalStrikes < 4) {
-    return { symmetry: null, cv: null, meanStepMs: null, intervalsL, intervalsR }
+    return { symmetry: null, rcv: null, meanStepMs: null, intervalsL, intervalsR }
   }
   if (intervalsL.length < 2 || intervalsR.length < 2) {
-    return { symmetry: null, cv: null, meanStepMs: null, intervalsL, intervalsR }
+    return { symmetry: null, rcv: null, meanStepMs: null, intervalsL, intervalsR }
   }
 
   const mL = mean(intervalsL)
@@ -119,16 +150,12 @@ function timing(segments: ValidSegment[]): TimingResult {
   const asymPct = (Math.abs(mL - mR) / (mL + mR)) * 100
   const symmetry = Math.max(0, 100 - asymPct)
 
-  const cv = (a: number[]) => {
-    const m = mean(a)
-    const sd = Math.sqrt(mean(a.map((v) => (v - m) ** 2)))
-    return m > 0 ? (sd / m) * 100 : NaN
-  }
-  const cvL = cv(intervalsL)
-  const cvR = cv(intervalsR)
-  const cvAvg = Number.isFinite(cvL) && Number.isFinite(cvR) ? (cvL + cvR) / 2 : null
+  // 稳健离散度（MAD）：对每侧独立计算 rCV%，再取两侧均值
+  const rcvL = robustCvPercent(intervalsL)
+  const rcvR = robustCvPercent(intervalsR)
+  const rcvAvg = rcvL !== null && rcvR !== null ? (rcvL + rcvR) / 2 : null
 
-  return { symmetry, cv: cvAvg, meanStepMs: mean([...intervalsL, ...intervalsR]), intervalsL, intervalsR }
+  return { symmetry, rcv: rcvAvg, meanStepMs: mean([...intervalsL, ...intervalsR]), intervalsL, intervalsR }
 }
 
 const hipX = (f: PoseFrame) => ((f.landmarks[23].x + f.landmarks[24].x) / 2) * W
@@ -267,23 +294,28 @@ export function computeMetrics(
   const calibrated = scale.calibrated
   const symmetry: Metric = {
     key: 'symmetry',
-    label: '步態對稱度',
+    label: '步态对称度',
     value: t.symmetry,
     unit: '%',
     level: levelSym(t.symmetry),
     calibrated: true,
     confidence: conf,
-    hint: '基於左右交替步的時間；數值越大越對稱。',
+    hint: '基于左右交替步的时间；数值越大越对称。',
   }
   const stability: Metric = {
     key: 'stability',
-    label: '步態穩定度',
-    value: t.cv,
-    unit: 'cv',
-    level: levelCv(t.cv),
+    label: '步态稳定度',
+    // 对外为 0–100 稳定度得分（越大越好）：100 - rCV*4，截断到 0..100
+    value:
+      t.rcv === null
+        ? null
+        : Math.max(0, Math.min(100, 100 - t.rcv * CV_SCORE_SCALE)),
+    unit: '%',
+    // level 仍按内部 rCV% 判定，保持门控/医疗语义不变
+    level: levelCv(t.rcv),
     calibrated: true,
     confidence: conf,
-    hint: '步間隔變異系數 CV%；數值越小越穩定。',
+    hint: '数值越大表示步频越稳定。',
   }
   const speed: Metric = {
     key: 'speed',
@@ -293,17 +325,17 @@ export function computeMetrics(
     level: calibrated ? levelSpeed(sp) : 'none',
     calibrated,
     confidence: scale.confidence ?? 0,
-    hint: calibrated ? '有效測量段嘅平均速度。' : '未完成尺度校準，無法給出物理速度。',
+    hint: calibrated ? '有效测量段的平均速度。' : '未完成尺度校准，无法给出物理速度。',
   }
   const strideLength: Metric = {
     key: 'strideLength',
-    label: '步幅長度',
+    label: '步幅',
     value: calibrated ? st : null,
     unit: 'm',
     level: calibrated ? levelStride(st) : 'none',
     calibrated,
     confidence: scale.confidence ?? 0,
-    hint: calibrated ? '同側相鄰跟着地之間的位移。' : '未完成尺度校準，無法給出物理步幅。',
+    hint: calibrated ? '同侧相邻跟着地之间的位移。' : '未完成尺度校准，无法给出物理步幅。',
   }
 
   return {

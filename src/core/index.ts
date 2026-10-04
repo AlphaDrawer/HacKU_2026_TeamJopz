@@ -7,7 +7,7 @@ import type {
   ValidSegment,
 } from '../contracts/types'
 import * as pipeline from './posePipeline'
-import { selectSegments } from './segmentSelector'
+import { selectSegments, isMarchSession } from './segmentSelector'
 import { detectEventsInSegment } from './eventDetector'
 import { calibrateScale } from './scaleCalibrator'
 import { computeMetrics } from './metricsCalculator'
@@ -54,9 +54,14 @@ export function createGaitCore(): GaitCore {
         return {
           ok: false as const,
           reason: 'insufficient-frames',
-          message: '今次測量時間太短，請跟足全程（踏步或行走）後再停止。',
+          message: '本次测量时间太短，请完成全程（踏步或行走）后再停止。',
         }
       }
+
+      // 原地踏步无平移物理意义：判定为 march 后忽略任何尺度线索，
+      // 强制 speed/stride 为 null（防止误传 height 导致 speed≈0 的假阳性就医预警）
+      const marchSession = isMarchSession(frames)
+      const effectiveScaleHint = marchSession ? undefined : scaleHint
 
       // 1) 切段：只保留侧面横走的中段匀速段
       const rawSegments: ValidSegment[] = selectSegments(frames)
@@ -79,7 +84,7 @@ export function createGaitCore(): GaitCore {
         return {
           ok: false as const,
           reason: 'insufficient-main-metrics',
-          message: '今次未測到有效步態，請將手機擺喺斜側30–45°、令雙腳左右錯開，原地穩定踏步後重試。',
+          message: '本次没有检测到有效步态，请把手机放在斜侧30–45°位置，让双脚左右错开，稳定踏步或在小范围内来回走后重试。',
         }
       }
 
@@ -90,12 +95,12 @@ export function createGaitCore(): GaitCore {
         return {
           ok: false as const,
           reason: 'low-confidence',
-          message: '今次畫面骨架不夠清晰，請確保光線充足、全身入鏡後重走。',
+          message: '本次画面骨架不够清晰，请确保光线充足、全身入镜后重走。',
         }
       }
 
-      // 3) 尺度校准（height/step/manual 决定物理尺度）
-      const scale = calibrateScale(frames, allEvents, scaleHint)
+      // 3) 尺度校准（height/step/manual 决定物理尺度；踏步会话强制无尺度）
+      const scale = calibrateScale(frames, allEvents, effectiveScaleHint)
 
       // 4) 四项主指标 + 左右踝可分诊断
       const computed = computeMetrics(frames, segments, scale)
@@ -114,7 +119,7 @@ export function createGaitCore(): GaitCore {
         return {
           ok: false as const,
           reason: 'insufficient-main-metrics',
-          message: '今次未測到有效步態，請重走。',
+          message: '本次未测到有效步态，请重新测量。',
         }
       }
 
@@ -132,7 +137,12 @@ export function createGaitCore(): GaitCore {
         metrics: metricsBundle,
       }
 
-      return { ok: true as const, metrics, conclusion }
+      return {
+        ok: true as const,
+        metrics,
+        conclusion,
+        activityMode: marchSession ? 'march' : 'walk',
+      }
     },
   }
 }

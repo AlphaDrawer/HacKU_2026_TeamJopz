@@ -274,7 +274,44 @@ h1, h2, p { margin-top: 0; }
 .trend-wrap h2 { font-size: 16px; margin-bottom: 6px; }
 .trend-chart { width: 100%; height: auto; max-height: 200px; }
 .trend-empty { fill: #8a958d; font-size: 12px; }
+.trend-grid { stroke: #dfe7df; stroke-width: 1; }
+.trend-tick { fill: #8a958d; font-size: 10px; }
+.trend-block { margin-bottom: 12px; }
+.trend-title { font-size: 13px; color: var(--muted); margin-bottom: 2px; }
 .error-text { color: #a23c30; }
+
+/* 报告页头部 + 运动类型徽章 */
+.report-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.report-header h1 { margin: 0; }
+.activity-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.activity-march { background: #e8f0e2; color: #47632f; }
+.activity-walk { background: #e2edf6; color: #2f5373; }
+
+/* 身高输入 */
+.height-field { margin: 14px 0; }
+.height-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--ink); }
+.height-field input { width: 100%; max-width: 220px; padding: 9px 12px; font-size: 15px; border: 1px solid #cdd8ce; border-radius: 10px; background: #fff; }
+.height-field input.input-invalid { border-color: #c4543f; background: #fdf4f2; }
+.field-hint { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+.inline-error { color: #a23c30; font-size: 12px; margin-top: 4px; min-height: 1em; }
+
+/* 康复运动推荐（报告页内折叠卡片） */
+.rec-section { margin: 18px 0 4px; }
+.rec-section h2 { font-size: 16px; margin-bottom: 8px; }
+.rec-card { border: 1px solid #d8e0d7; border-radius: 12px; margin-bottom: 8px; background: #fbfdfa; overflow: hidden; }
+.rec-card summary { padding: 11px 14px; font-size: 14px; font-weight: 600; cursor: pointer; list-style: none; }
+.rec-card summary::-webkit-details-marker { display: none; }
+.rec-card summary::before { content: "▸"; display: inline-block; margin-right: 8px; color: var(--green); transition: transform .2s; }
+.rec-card[open] summary::before { transform: rotate(90deg); }
+.rec-body { padding: 0 14px 12px; }
+.rec-subtitle { font-size: 12px; font-weight: 600; color: var(--muted); margin: 8px 0 4px; }
+.rec-steps { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.8; color: var(--ink); }
+.rec-cautions { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.8; color: #a23c30; }
+.rec-subtitle.caution { color: #a23c30; }
+
+/* 历史行类型小标记 */
+.history-row { display: flex; align-items: center; gap: 10px; }
+.history-mode { font-size: 11px; color: var(--muted); background: #eef3ec; border-radius: 6px; padding: 1px 7px; white-space: nowrap; }
 
 /* 测量舞台 */
 .measure-status { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--green); }

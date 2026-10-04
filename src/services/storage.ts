@@ -40,15 +40,15 @@ function openDb(): Promise<IDBDatabase> {
       store.createIndex(INDEX_ALERT, ALERT_KEYPATH, { unique: false });
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("開啟本地資料庫失敗"));
-    request.onblocked = () => reject(new Error("本地資料庫被其他分頁佔用，請關閉後重試"));
+    request.onerror = () => reject(request.error ?? new Error("打开本地数据库失败"));
+    request.onblocked = () => reject(new Error("本地数据库被其他标签页占用，请关闭后重试"));
   });
 }
 
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("本地資料庫操作失敗"));
+    request.onerror = () => reject(request.error ?? new Error("本地数据库操作失败"));
   });
 }
 
@@ -66,7 +66,7 @@ export class LocalReportStore implements ReportStore {
       const tx = db.transaction(STORE, "readwrite");
       tx.objectStore(STORE).put(record);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error ?? new Error("保存報告失敗"));
+      tx.onerror = () => reject(tx.error ?? new Error("保存报告失败"));
     });
   }
 
@@ -101,7 +101,7 @@ export class LocalReportStore implements ReportStore {
       const tx = db.transaction(STORE, "readwrite");
       tx.objectStore(STORE).delete(sessionId);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error ?? new Error("刪除報告失敗"));
+      tx.onerror = () => reject(tx.error ?? new Error("删除报告失败"));
     });
   }
 }

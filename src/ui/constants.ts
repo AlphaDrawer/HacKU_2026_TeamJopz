@@ -3,8 +3,8 @@
  * 与 contracts/constants.ts 区分：这里只放与界面/交互有关的常量。
  */
 
-/** 单次测量时长（秒）：兼顾至少3次/侧脚跟着地与体验，12s 足够 */
-export const MEASUREMENT_DURATION_SEC = 12;
+/** 单次测量时长（秒）：18s 可拿到更多交替步，降低 MAD 稳定度噪声；踏步不出画 */
+export const MEASUREMENT_DURATION_SEC = 18;
 
 /** 开测倒计时（秒） */
 export const COUNTDOWN_SEC = 3;
@@ -43,3 +43,6 @@ export const COLORS = {
 
 /** 语音开关在 localStorage 的键 */
 export const VOICE_STORAGE_KEY = "gaittrace:voice-enabled";
+
+/** 上次输入的身高（厘米）在 localStorage 的键 */
+export const HEIGHT_STORAGE_KEY = "gaittrace:height-cm";

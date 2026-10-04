@@ -1,8 +1,13 @@
 /**
- * GaitTrace 冻结接口契约（技术规范 v1.1 §5）
+ * GaitTrace 冻结接口契约（技术规范 v1.2 §5）
  * ---------------------------------------------------------------
  * 本文件是 UI 层与算法层之间【唯一】的数据边界，冻结后任何一方
  * MUST NOT 单方面修改；需要变更时按规范 §9 走双方同意 + 升版本流程。
+ *
+ * v1.2 变更：ReportRecord 与 AnalyzeResult 成功分支新增 MUST 字段
+ * activityMode（'march' | 'walk'）；stability Metric 语义由「CV% 越小
+ * 越好」改为「稳定度得分 0–100，越大越好」（unit 由 'cv' 改为 '%'），
+ * level 仍按内部稳健 rCV% 判定（CV_GREEN/CV_YELLOW）。
  *
  * 规范强度：字段命名、可空性与单位均为 MUST。
  */
@@ -116,11 +121,20 @@ export interface GaitConclusion {
   exercises: Exercise[];
 }
 
+/** 本次测量的运动类型：march=原地踏步，walk=直线行走（v1.2 MUST） */
+export type ActivityMode = "march" | "walk";
+
 export interface ReportRecord {
   /** 由前端生成、全链路唯一标识（建议 crypto.randomUUID） */
   sessionId: string;
   createdAtMs: number;
   durationSec: number;
+  /**
+   * 运动类型（v1.2 MUST）：由算法层根据髋水平摆幅判定，
+   * march=原地踏步（speed/stride 强制为 null），walk=直线行走。
+   * 构造任何 ReportRecord 时 MUST 提供该字段。
+   */
+  activityMode: ActivityMode;
   metrics: GaitMetrics;
   conclusion: GaitConclusion;
 }
@@ -149,7 +163,13 @@ export type AnalyzeFailureReason =
   | "low-confidence";
 
 export type AnalyzeResult =
-  | { ok: true; metrics: GaitMetrics; conclusion: GaitConclusion }
+  | {
+      ok: true;
+      metrics: GaitMetrics;
+      conclusion: GaitConclusion;
+      /** 运动类型（v1.2 MUST）：march=原地踏步，walk=直线行走 */
+      activityMode: ActivityMode;
+    }
   | { ok: false; reason: AnalyzeFailureReason; message: string };
 
 export interface GaitCore {

@@ -50,7 +50,7 @@ function fakeFrames(fromMs = 0, toMs = 30000, step = 33): ReturnType<typeof gene
   return frames;
 }
 
-describe("端到端鏈路（成功路径）", () => {
+describe("端到端链路（成功路径）", () => {
   it("造帧→分析成功→存库→历史：结构、排序、区间查询均正确", async () => {
     const core = new MockGaitCore();
     await core.initPose("ignored-model-url");
@@ -70,14 +70,14 @@ describe("端到端鏈路（成功路径）", () => {
     expect(metrics.metrics.strideLength.level).toBe("none");
     expect(conclusion.disclaimer).toBeTruthy();
 
-    const record = assembleRecord("session-demo-1", 1000, 30, metrics, conclusion);
+    const record = assembleRecord("session-demo-1", 1000, 30, metrics, conclusion, "march");
     expect(hasMainMetrics(metrics)).toBe(true);
 
     const store = new MemoryStore();
     await store.save(record);
 
     // 再加一条更晚的记录，验证升序
-    const later = assembleRecord("session-demo-2", 2000, 30, metrics, conclusion);
+    const later = assembleRecord("session-demo-2", 2000, 30, metrics, conclusion, "march");
     await store.save(later);
 
     const all = await store.getAll();
@@ -111,7 +111,9 @@ describe("端到端（失败路径：不落库、无分数）", () => {
       // 模拟 measurementSession 的安全契约：失败绝不落库
       const store = new MemoryStore();
       if (result.ok) {
-        await store.save(assembleRecord("s", 1, 1, result.metrics, result.conclusion));
+        await store.save(
+          assembleRecord("s", 1, 1, result.metrics, result.conclusion, "march"),
+        );
       }
       expect(await store.getAll()).toEqual([]);
     },

@@ -33,13 +33,18 @@ import { POSE_INDEX, generateFakeFrame } from "./fakePose";
 const MIN_SAME_FOOT_GAP_MS = 450;
 /** 峰到摆动谷的最小落差（归一化），低于此不算一次抬腿 */
 const SWING_DROP = 0.02;
-/** 对称/稳定的演示阈值（与 core 侧量级一致，仅用于演示着色） */
+/** 对称/稳定阈值与 core 常量保持一致（演示着色用） */
 const SYM_GREEN = 80;
-const CV_GREEN = 15;
-const CV_YELLOW = 25;
+const CV_GREEN = 8;
+const CV_YELLOW = 15;
+const CV_SCORE_SCALE = 4;
 
 /** 要判定主指标有效，至少需要的有效着地数（与真实 core 的最小样本一致） */
 const MIN_STRIKES = 4;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 interface SideState {
   lastStrikeMs: number;
@@ -121,7 +126,9 @@ function buildFakeMetrics(sessionId: string, frames: PoseFrame[], events: GaitEv
     meanLeft + meanRight > 0
       ? 100 - (Math.abs(meanLeft - meanRight) / ((meanLeft + meanRight) / 2)) * 100
       : 0;
-  const stability = cvPercent(gaps);
+  const rcv = cvPercent(gaps);
+  // 对外仍给「越大越好」的稳定度得分；门控等级仍按内部 rCV 判定
+  const stabilityScore = clamp(100 - rcv * CV_SCORE_SCALE, 0, 100);
 
   return {
     sessionId,
@@ -129,24 +136,24 @@ function buildFakeMetrics(sessionId: string, frames: PoseFrame[], events: GaitEv
     scale: { calibrated: false, method: "none" },
     metrics: {
       symmetry: makeMetric({
-        key: "symmetry", label: "左右對稱", value: Number(symmetry.toFixed(1)), unit: "%",
+        key: "symmetry", label: "步态对称度", value: Number(symmetry.toFixed(1)), unit: "%",
         calibrated: false, confidence: 0.8,
-        hint: "合成數值：左右平均步間隔差異",
+        hint: "合成数值：左右平均步间隔差异",
         level: symmetry >= SYM_GREEN ? "green" : "yellow",
       }),
       stability: makeMetric({
-        key: "stability", label: "步間穩定", value: Number(stability.toFixed(1)), unit: "cv",
+        key: "stability", label: "步态稳定度", value: Number(stabilityScore.toFixed(1)), unit: "%",
         calibrated: false, confidence: 0.8,
-        hint: "合成數值：交替步間隔變異係數，越低越穩",
-        level: stability <= CV_GREEN ? "green" : stability <= CV_YELLOW ? "yellow" : "red",
+        hint: "数值越大表示步频越稳定。",
+        level: rcv <= CV_GREEN ? "green" : rcv <= CV_YELLOW ? "yellow" : "red",
       }),
       speed: makeMetric({
-        key: "speed", label: "步速", value: null, unit: "m/s",
-        calibrated: false, confidence: 0, hint: "尺度未標定，無法換算公制",
+        key: "speed", label: "步行速度", value: null, unit: "m/s",
+        calibrated: false, confidence: 0, hint: "尺度未标定，无法换算为公制单位",
       }),
       strideLength: makeMetric({
         key: "strideLength", label: "步幅", value: null, unit: "m",
-        calibrated: false, confidence: 0, hint: "尺度未標定，無法換算公制",
+        calibrated: false, confidence: 0, hint: "尺度未标定，无法换算为公制单位",
       }),
     },
   };
@@ -217,22 +224,23 @@ export class MockGaitCore implements GaitCore {
     const conclusion: GaitConclusion = {
       overallScore: Math.round(metrics.metrics.symmetry.value ?? 0),
       alertLevel,
-      summaryLine: "本次測量完成。",
+      summaryLine: "本次测量完成。",
       alerts:
         alertLevel === "seekCare"
-          ? ["偵測到明顯左右差異或步間不穩，建議盡快由醫護人員評估。"]
+          ? ["检测到明显左右差异或步态不稳定，建议尽快由医护人员评估。"]
           : [],
       disclaimer: SCREENING_DISCLAIMER,
       exercises: [],
     };
 
-    return { ok: true, metrics, conclusion };
+    // 合成数据模拟原地踏步（speed/stride 为 null）
+    return { ok: true, metrics, conclusion, activityMode: "march" };
   }
 }
 
 /** 各失败原因对应的用户可读信息（与真实 core 文案口径一致） */
 const FAIL_MESSAGE: Record<AnalyzeFailureReason, string> = {
-  "insufficient-frames": "有效畫面不足，無法分析步態。",
-  "insufficient-main-metrics": "未能可靠算出左右對稱與步間穩定。",
-  "low-confidence": "多數動作置信度偏低，結果不可靠。",
+  "insufficient-frames": "有效画面不足，无法分析步态。",
+  "insufficient-main-metrics": "未能可靠算出步态对称度与步态稳定度。",
+  "low-confidence": "多数动作置信度偏低，结果不可靠。",
 };

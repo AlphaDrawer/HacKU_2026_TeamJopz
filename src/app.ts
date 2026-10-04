@@ -17,7 +17,7 @@ import { Router } from "./ui/router";
 
 const root = document.getElementById("app");
 if (!root) {
-  throw new Error("找不到 #app 掛載節點");
+  throw new Error("找不到 #app 挂载节点");
 }
 
 const app = createAppContext();

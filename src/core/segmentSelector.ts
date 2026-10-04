@@ -143,6 +143,11 @@ function detectMode(s: Sample[]): Mode {
   return range <= MARCH_HIP_RANGE_PX ? 'march' : 'locomotion'
 }
 
+/** 供 analyzeSession 判断本会话是否原地踏步；踏步时强制无物理尺度（speed/stride=null） */
+export function isMarchSession(frames: PoseFrame[]): boolean {
+  return detectMode(buildSamples(frames)) === 'march'
+}
+
 function trimSteady(samplesInSeg: Sample[]): { start: number; end: number } | null {
   // 边界帧因中心差分取不到速度（NaN），但不代表它们在加/减速；
   // 先按「能算出速度的帧」确定稳态区间，再把该区间覆盖到的真实帧时间范围

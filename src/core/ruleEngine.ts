@@ -6,14 +6,12 @@ import type {
 } from '../contracts/types'
 import {
   SYM_SEVERE,
-  CV_SEVERE,
   SPEED_SEVERE,
   HISTORY_MIN_BASELINE,
   WORSEN_SYM_DROP_PP,
   SPEED_DECLINE_REL,
   LOW_CONFIDENCE_GATE,
   SCORE_WEIGHTS,
-  CV_SCORE_SCALE,
   SCORE_FULL,
   SCORE_FLOOR,
   SCORE_NEUTRAL,
@@ -32,7 +30,9 @@ import type { Exercise } from '../contracts/types'
  *  1. 连续 2 次会话处于红（任意主指标 level=red）；
  *  2. 较个人基线加重：symmetry 较历史均值下降 ≥10pp；
  *  3. 步速连续下滑：本次速度较基线累计下降 ≥15%；
- *  4. 本次主指标单次严重异常（symmetry<60 / cv>25 / speed<0.5）。
+ *  4. 本次主指标单次严重异常（symmetry<60 / stability 内部 rCV 达红档
+ *     （rCV>15）/ speed<0.5）。注：stability 对外 value 已是 0–100 得分，
+ *     不再当 CV 使用，严重判定依据 level==='red'。
  * 低置信度（相关指标 confidence<0.55）时 MUST NOT 硬下 seekCare，
  * 最高只给 caution 并提示「结果不确定，建议重测」。常驻 disclaimer。
  * 纯函数（不查 DOM/DB；历史由调用方传入）。
@@ -49,12 +49,8 @@ function metricScore(m: Metric): number {
     case 'symmetry':
       return m.value ?? 0
     case 'stability':
-      // cv 越小越好：100 - cv*4，截断到 0..100
-      return clamp(
-        SCORE_FULL - (m.value ?? CV_SCORE_SCALE * CV_SEVERE) * CV_SCORE_SCALE,
-        0,
-        SCORE_FULL
-      )
+      // v1.2：value 本身就是 0–100 的稳定度得分（越大越好），直接返回
+      return clamp(m.value ?? 0, 0, SCORE_FULL)
     case 'speed': {
       if (m.value == null) return SCORE_NEUTRAL
       // 0.6→40 … 1.2→100 的分段线性
@@ -96,6 +92,10 @@ interface Flags {
   symWorsen: boolean
   speedDecline: boolean
   severeNow: boolean
+  /** 各项「单次严重异常」命中情况（用于给出可指明原因的告警） */
+  severeSym: boolean
+  severeStability: boolean
+  severeSpeed: boolean
   /** 触发 seekCare 的相关指标里是否存在低置信（用于 seekCare 门控） */
   lowConfTrigger: boolean
   /** 任意已测量指标是否低置信（仅用于 normal 档的「仅供参考」提示） */
@@ -140,10 +140,13 @@ function evaluateFlags(
     }
   }
 
-  const severeNow =
-    (m.symmetry.value != null && m.symmetry.value < SYM_SEVERE) ||
-    (m.stability.value != null && m.stability.value > CV_SEVERE) ||
-    (m.speed.value != null && m.speed.value < SPEED_SEVERE)
+  // 各项「单次严重异常」命中（用于给出可指明原因的告警）
+  const severeSym = m.symmetry.value != null && m.symmetry.value < SYM_SEVERE
+  // stability：v1.2 起 value 是得分而非 CV，严重判定以 level==='red'（内部 rCV>15）为准
+  const severeStability = m.stability.level === 'red'
+  const severeSpeed = m.speed.value != null && m.speed.value < SPEED_SEVERE
+
+  const severeNow = severeSym || severeStability || severeSpeed
 
   // 全局：任意已测量（level!=='none'）指标低置信 → normal 档加「仅供参考」
   const lowConfAny = [m.symmetry, m.stability, m.speed, m.strideLength].some(
@@ -151,13 +154,13 @@ function evaluateFlags(
   )
 
   // seekCare 门控只看「真正触发 seekCare 的指标」：
-  //  - severeNow：命中严重阈值的指标（sym<60 / cv>25 / speed<0.5）；
+  //  - severeNow：命中严重阈值的指标（sym<60 / stability level=red / speed<0.5）；
   //  - twoRed：本次处于红的指标。
   // 一个与触发无关的指标低置信，不应压掉真实的严重预警。
   const severeTriggerMetrics: Metric[] = []
-  if (m.symmetry.value != null && m.symmetry.value < SYM_SEVERE) severeTriggerMetrics.push(m.symmetry)
-  if (m.stability.value != null && m.stability.value > CV_SEVERE) severeTriggerMetrics.push(m.stability)
-  if (m.speed.value != null && m.speed.value < SPEED_SEVERE) severeTriggerMetrics.push(m.speed)
+  if (severeSym) severeTriggerMetrics.push(m.symmetry)
+  if (severeStability) severeTriggerMetrics.push(m.stability)
+  if (severeSpeed) severeTriggerMetrics.push(m.speed)
   const seekTriggerMetrics = severeNow
     ? severeTriggerMetrics
     : twoRed
@@ -165,7 +168,17 @@ function evaluateFlags(
       : []
   const lowConfTrigger = seekTriggerMetrics.some((x) => x.confidence < LOW_CONFIDENCE_GATE)
 
-  return { twoRed, symWorsen, speedDecline, severeNow, lowConfTrigger, lowConfAny }
+  return {
+    twoRed,
+    symWorsen,
+    speedDecline,
+    severeNow,
+    severeSym,
+    severeStability,
+    severeSpeed,
+    lowConfTrigger,
+    lowConfAny,
+  }
 }
 
 function alertFromFlags(f: Flags): AlertLevel {
@@ -175,9 +188,9 @@ function alertFromFlags(f: Flags): AlertLevel {
 }
 
 function summaryFor(level: AlertLevel, score: number): string {
-  if (level === 'seekCare') return `綜合評分 ${score}，發現較明顯的步態異常，建議盡快諮詢專業人士。`
-  if (level === 'caution') return `綜合評分 ${score}，步態較以往有所變化，建議留意並安排覆檢。`
-  return `綜合評分 ${score}，今次步態表現整體平穩。`
+  if (level === 'seekCare') return `综合评分 ${score}，发现较明显的步态异常，建议尽快咨询专业人士。`
+  if (level === 'caution') return `综合评分 ${score}，步态较以往有所变化，建议留意并安排复查。`
+  return `综合评分 ${score}，本次步态表现整体平稳。`
 }
 
 export interface RuleInput {
@@ -197,18 +210,21 @@ export function buildConclusion(input: RuleInput): GaitConclusion {
   let level = alertFromFlags(f)
 
   const alerts: string[] = []
-  if (f.twoRed) alerts.push('連續兩次測量出現紅色指標。')
-  if (f.severeNow) alerts.push('今次主指標出現嚴重異常。')
-  if (f.symWorsen) alerts.push('對稱度較個人基線明顯下降。')
-  if (f.speedDecline) alerts.push('步行速度較個人基線有所減慢。')
+  if (f.twoRed) alerts.push('连续两次测量出现红色指标。')
+  // 单次严重异常：分别指明是哪项，便于用户理解（步频/对称/速度）
+  if (f.severeSym) alerts.push('左右对称度本次明显偏低。')
+  if (f.severeStability) alerts.push('步频稳定性本次明显偏差。')
+  if (f.severeSpeed) alerts.push('步行速度本次明显偏慢。')
+  if (f.symWorsen) alerts.push('对称度较个人基线明显下降。')
+  if (f.speedDecline) alerts.push('步行速度较个人基线有所减慢。')
 
   // 低置信度安全门：触发 seekCare 的相关指标置信不足时，禁止硬下 seekCare
   if (level === 'seekCare' && f.lowConfTrigger) {
     level = 'caution'
-    alerts.push('部分關鍵數據置信度偏低，結論不確定，建議按指引重測後再判斷。')
+    alerts.push('部分关键数据置信度偏低，结论不确定，建议按指引重测后再判断。')
   }
   if (f.lowConfAny && level === 'normal') {
-    alerts.push('部分數據置信度偏低，結果僅供參考。')
+    alerts.push('部分数据置信度偏低，结果仅供参考。')
   }
 
   return {

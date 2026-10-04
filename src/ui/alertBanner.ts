@@ -10,13 +10,13 @@ export function buildAlertBanner(record: ReportRecord): HTMLElement | null {
   if (record.conclusion.alertLevel !== "seekCare") return null;
 
   const banner = h("div", { className: "alert-banner seek-care" });
-  const title = h("strong", { text: "需要盡快關注" });
+  const title = h("strong", { text: "需要尽快关注" });
   const body = h("p", {
     text:
       record.conclusion.alerts[0] ??
-      "本次測量出現明顯異常訊號，建議盡快聯絡醫護人員進行專業評估。",
+      "本次测量出现明显异常信号，建议尽快联系医护人员进行专业评估。",
   });
-  const note = h("small", { text: "此提示不等同診斷結果。" });
+  const note = h("small", { text: "此提示不等同于诊断结果。" });
   banner.append(title, body, note);
   return banner;
 }

@@ -24,8 +24,10 @@ describe("report 领域助手（v1.1 契约）", () => {
     expect(record.conclusion.alertLevel).toBe("normal");
     expect(record.conclusion.overallScore).toBe(0);
     expect(record.conclusion.disclaimer).toBe(SCREENING_DISCLAIMER);
-    // 顶层键集合（v1.1：无 status / id / measuredAt）
+    // v1.2：顶层含 activityMode，无 status / id / measuredAt
+    expect(record.activityMode).toBe("march");
     expect(Object.keys(record).sort()).toEqual([
+      "activityMode",
       "conclusion",
       "createdAtMs",
       "durationSec",
@@ -45,7 +47,7 @@ describe("report 领域助手（v1.1 契约）", () => {
       metrics: {
         ...emptyMetricSet(goodId, 0).metrics,
         symmetry: makeMetric({
-          key: "symmetry", label: "左右對稱", value: 82, unit: "%",
+          key: "symmetry", label: "步态对称度", value: 82, unit: "%",
           calibrated: true, confidence: 0.9, hint: "", level: "green",
         }),
       },
@@ -60,7 +62,7 @@ describe("report 领域助手（v1.1 契约）", () => {
         metrics: {
           ...emptyMetricSet(goodId, 0).metrics,
           symmetry: makeMetric({
-            key: "symmetry", label: "左右對稱", value: bad, unit: "%",
+            key: "symmetry", label: "步态对称度", value: bad, unit: "%",
             calibrated: true, confidence: 0.9, hint: "", level: "red",
           }),
         },
@@ -71,7 +73,7 @@ describe("report 领域助手（v1.1 契约）", () => {
 
   it("makeMetric：value=null 时强制 level=none，即便传了别的等级", () => {
     const m = makeMetric({
-      key: "speed", label: "步速", value: null, unit: "m/s",
+      key: "speed", label: "步行速度", value: null, unit: "m/s",
       calibrated: false, confidence: 0, hint: "", level: "red",
     });
     expect(m.level).toBe("none");

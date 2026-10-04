@@ -26,7 +26,7 @@ import type {
 
 /** 全程常驻的筛查免责声明（规范 §4.4 强制） */
 export const SCREENING_DISCLAIMER =
-  "本結果為篩查與自我追蹤，不構成醫學診斷；如有疑慮請由醫護人員評估。";
+  "本结果用于筛查与自我追踪，不构成医学诊断；如有疑虑请由医护人员评估。";
 
 const METRIC_ORDER: readonly MetricKey[] = ["symmetry", "stability", "speed", "strideLength"];
 
@@ -70,20 +70,20 @@ export function emptyMetricSet(sessionId: string, timestampMs: number, scale?: S
     scale: noScale,
     metrics: {
       symmetry: makeMetric({
-        key: "symmetry", label: "左右對稱", value: null, unit: "%",
-        calibrated: false, confidence: 0, hint: "尚無有效測量",
+        key: "symmetry", label: "步态对称度", value: null, unit: "%",
+        calibrated: false, confidence: 0, hint: "暂无有效测量",
       }),
       stability: makeMetric({
-        key: "stability", label: "步間穩定", value: null, unit: "cv",
-        calibrated: false, confidence: 0, hint: "尚無有效測量",
+        key: "stability", label: "步态稳定度", value: null, unit: "%",
+        calibrated: false, confidence: 0, hint: "暂无有效测量",
       }),
       speed: makeMetric({
-        "key": "speed", label: "步速", value: null, unit: "m/s",
-        calibrated: false, confidence: 0, hint: "尺度未標定",
+        key: "speed", label: "步行速度", value: null, unit: "m/s",
+        calibrated: false, confidence: 0, hint: "尺度未标定",
       }),
       strideLength: makeMetric({
         key: "strideLength", label: "步幅", value: null, unit: "m",
-        calibrated: false, confidence: 0, hint: "尺度未標定",
+        calibrated: false, confidence: 0, hint: "尺度未标定",
       }),
     },
   };
@@ -99,7 +99,7 @@ function buildUnavailableConclusion(now: number): GaitConclusion {
   return {
     overallScore: 0,
     alertLevel: "normal", // 未测量不是危险，也不渲染灯号
-    summaryLine: "本次未取得足夠的有效畫面，沒有產生測量結果。",
+    summaryLine: "本次未取得足够的有效画面，没有产生测量结果。",
     alerts: [],
     disclaimer: SCREENING_DISCLAIMER,
     exercises: [],
@@ -116,6 +116,8 @@ export function unavailableRecord(now = Date.now()): ReportRecord {
     sessionId,
     createdAtMs: now,
     durationSec: 0,
+    // 占位记录没有真实运动；默认 march 以满足 MUST 字段
+    activityMode: "march",
     metrics: emptyMetricSet(sessionId, now),
     conclusion: buildUnavailableConclusion(now),
   };

@@ -14,6 +14,7 @@
  * 视图通过回调更新画面，流程与渲染解耦。
  */
 import type {
+  ActivityMode,
   AnalyzeFailureReason,
   GaitCore,
   GaitMetrics,
@@ -52,8 +53,9 @@ export function assembleRecord(
   durationSec: number,
   metrics: ReportRecord["metrics"],
   conclusion: ReportRecord["conclusion"],
+  activityMode: ActivityMode,
 ): ReportRecord {
-  return { sessionId, createdAtMs, durationSec, metrics, conclusion };
+  return { sessionId, createdAtMs, durationSec, activityMode, metrics, conclusion };
 }
 
 /**
@@ -84,6 +86,8 @@ export class MeasurementSession {
     private readonly video: HTMLVideoElement,
     private readonly modelUrl: string,
     private readonly callbacks: SessionCallbacks = {},
+    /** 用户身高（厘米）；null/undefined = 不提供身高，按未校准处理 */
+    private readonly heightCm: number | null = null,
   ) {}
 
   async start(): Promise<boolean> {
@@ -148,8 +152,13 @@ export class MeasurementSession {
     // 读取历史（升序），供规则引擎做纵向基线
     const history = await this.store.getAll();
 
-    // 尺度提示：当前 demo 不做物理标定；真实接入时可传 height/tile 等
-    const scaleHint: ScaleHint = { method: "none" };
+    // 尺度提示：用户填了合法身高时按 height 校准（米）；否则不做物理标定。
+    // 注意：即使传了身高，算法层在判定为原地踏步时仍会强制忽略尺度线索，
+    // speed/stride 保持 null（见 core/index.ts）。
+    const scaleHint: ScaleHint =
+      this.heightCm !== null && this.heightCm > 0
+        ? { method: "height", referenceLengthM: this.heightCm / 100 }
+        : { method: "none" };
 
     const result = await this.core.analyzeSession(
       this.sessionId,
@@ -166,9 +175,16 @@ export class MeasurementSession {
       return;
     }
 
-    const { metrics, conclusion } = result;
+    const { metrics, conclusion, activityMode } = result;
     const durationSec = Math.round((Date.now() - startedAt) / 1000);
-    const record = assembleRecord(this.sessionId, startedAt, durationSec, metrics, conclusion);
+    const record = assembleRecord(
+      this.sessionId,
+      startedAt,
+      durationSec,
+      metrics,
+      conclusion,
+      activityMode,
+    );
 
     // 收紧守卫：两主指标均为有限数才落库；否则按「没测准」处理，不落库
     if (hasMainMetrics(metrics)) {
@@ -177,7 +193,7 @@ export class MeasurementSession {
     } else {
       this.callbacks.onFail?.({
         reason: "insufficient-main-metrics",
-        message: "本次未能得到可靠的左右對稱與步間穩定結果。",
+        message: "本次未能得到可靠的步态对称度与步态稳定度结果。",
       });
     }
   }

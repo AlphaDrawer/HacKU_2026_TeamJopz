@@ -51,7 +51,7 @@ export class SkeletonRenderer {
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext("2d");
-    if (!context) throw new Error("無法取得 Canvas 2D 環境");
+    if (!context) throw new Error("无法取得 Canvas 2D 环境");
     this.ctx = context;
   }
 

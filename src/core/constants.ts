@@ -59,6 +59,11 @@ export const MARCH_STEADY_BAND = 0.4;
 
 // ---- 指标 ----
 export const MAX_STEP_GAP_MS = 2000;
+/**
+ * 交替步间隔下界保护（ms）：单侧异侧相邻 strike 间隔小于此值时
+ * 生理上不可能（正常步频约 1.5–2.5 步/秒，半拍 ≥200ms），视为误检剔除。
+ */
+export const MIN_ALTERNATING_STEP_GAP_MS = 200;
 export const ANKLE_SEPARABLE_RATIO = 0.2; // 踝水平距 / 小腿长
 export const SEPARABLE_PASS_RATIO = 0.7; // 可分帧达标比例（§3.3 视角门控）
 
@@ -66,7 +71,7 @@ export const SEPARABLE_PASS_RATIO = 0.7; // 可分帧达标比例（§3.3 视角
 // symmetry：0–100 越大越好
 export const SYM_GREEN = 85;
 export const SYM_YELLOW = 70;
-// stability：CV% 越小越好
+// stability：内部稳健变异系数 rCV% 越小越好（对外为 0–100 稳定度得分）
 export const CV_GREEN = 8;
 export const CV_YELLOW = 15;
 // speed（m/s）：筛查口径，过慢提示跌倒/功能风险
@@ -117,4 +122,4 @@ export const BODY_NOSE_TO_ANKLE_RATIO = 0.875; // 鼻-踝距 / 真实身高
 
 // ---- 固定文案（医疗安全：常驻）----
 export const DISCLAIMER =
-  '本結果僅供日常健康與復康參考，不能取代醫生或物理治療師的診斷。如出現疼痛、跌倒或其他疑慮，請諮詢專業人士。';
+  '本结果仅供日常健康与康复参考，不能取代医生或物理治疗师的诊断。如出现疼痛、跌倒或其他疑虑，请咨询专业人士。';
